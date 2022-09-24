@@ -4,26 +4,64 @@ use rand::Rng;
 use log::{trace, debug};
 
 pub trait Solver {
-    fn solve<'a>(&self, initial: &'a [String], swappable: &[usize]) -> Vec<&'a str>;
+    fn solve<'a, O: Objective>(&mut self, objective: &O, initial: &'a [String], swappable: &[usize]) -> Vec<&'a str>;
 }
 
-pub struct AnnealingSolver<T: Objective> {
+pub struct SawtoothAnnealingSchedule {
     max_temp: f32,
-    objective: T,
+    count: usize,
+    temp: f32,
 }
 
-impl <T: Objective> AnnealingSolver<T> {
-    pub fn new(max_temp: f32, objective: T) -> Self {
+impl SawtoothAnnealingSchedule {
+    pub fn new(max_temp: f32) -> Self {
         Self {
             max_temp,
-            objective,
+            count: 0,
+            temp: max_temp,
         }
     }
 }
 
-impl <T: Objective> Solver for AnnealingSolver<T> {
-    fn solve<'a>(&self, initial: &'a [String], swappable: &[usize]) -> Vec<&'a str> {
-        let mut max_temp = self.max_temp;
+impl Iterator for SawtoothAnnealingSchedule {
+    type Item = f32;
+
+    // TODO parameterize cycle length and number
+    // Derive decay rates
+    fn next(&mut self) -> Option<Self::Item> {
+        self.count += 1;
+
+        if self.count % 1000 == 0 {
+            self.temp = self.max_temp;
+            self.max_temp /= 2.0;
+        }
+        else {
+            self.temp *= 0.99;
+        }
+
+        if self.count >= 20_000 {
+            None
+        }
+        else {
+            Some(self.temp)
+        }
+    }
+}
+
+pub struct AnnealingSolver<S: Iterator<Item = f32>, F: Fn() -> S> {
+    scheduler: F,
+}
+
+impl <S: Iterator<Item = f32>, F: Fn() -> S> AnnealingSolver<S, F> {
+    pub fn new(scheduler: F) -> Self {
+        Self {
+            scheduler,
+        }
+    }
+}
+
+impl <S: Iterator<Item = f32>, F: Fn() -> S> Solver for AnnealingSolver<S, F> {
+    fn solve<'a, O: Objective>(&mut self, objective: &O, initial: &'a [String], swappable: &[usize]) -> Vec<&'a str> {
         let mut solution: Vec<&str> = initial.iter()
             .map(|x| x.as_str())
             .collect();
@@ -34,41 +72,37 @@ impl <T: Objective> Solver for AnnealingSolver<T> {
 
         let mut last_loss: Option<f32> = None;
 
-        for _ in 1..=20 {
-            let mut temp = max_temp;
+        let schedule = (self.scheduler)();
 
-            for _ in 1..=1000 {
-                select_swap(&mut rng, swappable, &mut buf);
-                solution.swap(buf[0], buf[1]);
+        for temp in schedule {
+            select_swap(&mut rng, swappable, &mut buf);
+            solution.swap(buf[0], buf[1]);
 
-                let loss: f32 = self.objective.loss(&solution);
+            let loss: f32 = objective.loss(&solution);
 
-                debug!("Solution is {:?} with loss {}", solution, loss);
+            debug!("Solution is {:?} with loss {}", solution, loss);
 
-                if let Some(ll) = last_loss {
-                    let scale = ll.abs().max(1.0);
-                    let diff = (loss - ll) / scale;
+            if let Some(ll) = last_loss {
+                let scale = ll.abs().max(1.0);
+                let diff = (loss - ll) / scale;
 
-                    if diff > 0.0 {
-                        let metro = (-diff / temp).exp();
-                        let dice = rng.gen_range(0.0..1.0);
-                        trace!("temp {} diff {} dice {} vs metro {}", temp, diff, dice, metro);
+                if diff > 0.0 {
+                    let metro = (-diff / temp).exp();
+                    let dice = rng.gen_range(0.0..1.0);
+                    trace!("temp {} diff {} dice {} vs metro {}", temp, diff, dice, metro);
 
-                        // Reject new solution
-                        if dice > metro {
-                            trace!("REJECTED");
-                            solution.swap(buf[0], buf[1]);
-                            continue;
-                        }
+                    // Reject new solution
+                    if dice > metro {
+                        trace!("REJECTED");
+                        solution.swap(buf[0], buf[1]);
+                        continue;
                     }
                 }
-
-                last_loss = Some(loss);
-                temp *= 0.99;
             }
 
-            max_temp /= 2.0;
+            last_loss = Some(loss);
         }
+
         solution
     }
 }

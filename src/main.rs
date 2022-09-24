@@ -51,8 +51,8 @@ fn main() -> Result<(), Error> {
     ]);
 
 
-    let solver = AnnealingSolver::new(max_temp, objective);
-    let solution = solver.solve(&initial, &swappable);
+    let mut solver = AnnealingSolver::new(|| SawtoothAnnealingSchedule::new(max_temp));
+    let solution = solver.solve(&objective, &initial, &swappable);
 
     let mut writer = csv::WriterBuilder::new()
         .delimiter(b'\t')

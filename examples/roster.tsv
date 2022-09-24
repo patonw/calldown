@@ -4,8 +4,8 @@ date	pinned	general	ours	exclude
 8/15	-	bizzu	bizzu	-
 8/22	-	barry	foobar	-
 8/29	-	bizbuz	bozo	-
-9/5	-	foobar	bizzu	-
+9/5	-	foobar	bozo	-
 9/12	-	biz	foobar	foobar
-9/19	true	barry	bozo	-
-9/26	-	bozo	bizzu	bozo
+9/19	true	barry	bizzu	-
+9/26	-	bozo	bizzu	bizzu
 10/03	-	bizzu	foobar	-
